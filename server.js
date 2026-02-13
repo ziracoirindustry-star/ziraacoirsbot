@@ -1,9 +1,8 @@
 const express = require("express");
-const bodyParser = require("body-parser");
 const axios = require("axios");
 
 const app = express();
-app.use(bodyParser.json());
+app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
@@ -13,14 +12,20 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 
-// ✅ WEBHOOK VERIFY (VERY IMPORTANT)
+// ✅ Root route (Testing purpose)
+app.get("/", (req, res) => {
+  res.send("Ziraa Coir WhatsApp Bot is running ✅");
+});
+
+
+// ✅ Webhook verification (Meta verification)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("Webhook verified");
+    console.log("Webhook verified successfully");
     res.status(200).send(challenge);
   } else {
     res.sendStatus(403);
@@ -28,19 +33,26 @@ app.get("/webhook", (req, res) => {
 });
 
 
-// ✅ RECEIVE MESSAGES
+// ✅ Receive WhatsApp messages
 app.post("/webhook", async (req, res) => {
   try {
-    const msg =
-      req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    const msg = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    if (!msg) return res.sendStatus(200);
+    if (!msg) {
+      return res.sendStatus(200);
+    }
 
     const from = msg.from;
-    const text = msg.text.body;
+    const text = msg.text?.body;
 
-    // ChatGPT response
-    const ai = await axios.post(
+    if (!text) {
+      return res.sendStatus(200);
+    }
+
+    console.log("Incoming message:", text);
+
+    // 🔹 Call OpenAI
+    const aiResponse = await axios.post(
       "https://api.openai.com/v1/chat/completions",
       {
         model: "gpt-4o-mini",
@@ -49,13 +61,14 @@ app.post("/webhook", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
         },
       }
     );
 
-    const reply = ai.data.choices[0].message.content;
+    const reply = aiResponse.data.choices[0].message.content;
 
-    // Send reply to WhatsApp
+    // 🔹 Send reply to WhatsApp
     await axios.post(
       `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
       {
@@ -66,18 +79,20 @@ app.post("/webhook", async (req, res) => {
       {
         headers: {
           Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
         },
       }
     );
 
     res.sendStatus(200);
-  } catch (err) {
-    console.log(err.response?.data || err.message);
+
+  } catch (error) {
+    console.log("Error:", error.response?.data || error.message);
     res.sendStatus(200);
   }
 });
 
 
 app.listen(PORT, () => {
-  console.log(`ziraacoirsBot running on port ${PORT}`);
+  console.log(`Ziraa Coir Bot running on port ${PORT}`);
 });
